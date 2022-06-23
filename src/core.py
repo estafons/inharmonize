@@ -2,7 +2,7 @@ import librosa
 import numpy as np
 import scipy
 from scipy.optimize import least_squares
-
+import cProfile
 
 
 
@@ -18,7 +18,7 @@ class NoteClip():
 
     @staticmethod
     def loadAudio(filename):
-        audio, sr = librosa.load(filename)
+        audio, sr = librosa.load(filename, sr = 44100)
         return audio, sr
 
     @staticmethod
@@ -46,14 +46,12 @@ class NoteClip():
         return x
 
     
-
-
     @staticmethod
     def computeSTFT(audio):
         pass
 
     def __init__(self, fundamental, filename):
-        self.fundamental = fundamental
+        self.__fundamental = fundamental
         self.audio, self.sr = self.loadAudio(filename)
 
 
@@ -89,26 +87,28 @@ class PartialComputer():
                                         centrerFreq, windowSize, sr), frequencies)
     
     @staticmethod
-    def computeCenterfreq(fundamental : float, partialOrder : float):
-        return fundamental*partialOrder
+    def computeCenterfreq(fundamental : float, partialOrder : float, beta : float):
+        return partialOrder*fundamental * np.sqrt(1 + beta*partialOrder**2)
 
     @staticmethod
     def computeTFreqs(fundamental, maxOrder):
         for i in range (2, maxOrder):
             yield i*fundamental
 
-    def ComputePartial(self, noteclip : NoteClip, order, fft, frequencies, windowSize, sr):
-        centerFreq = self.computeCenterfreq(noteclip.fundamental, order)
+    def computePartial(self, noteclip : NoteClip, order, fft, frequencies, windowSize, sr, beta):
+        centerFreq = self.computeCenterfreq(noteclip.fundamental, order, beta)
         return self.computePartialPeak(noteclip, fft, frequencies, centerFreq, windowSize, sr)
 
+    @staticmethod
     def computeDiffs(mPartials, tPartials):
         return [m - t for m, t in zip(mPartials, tPartials)]
 
     # rewrite function for inner itteration. then write another for outer.
-    def computeInnerIterPartials(self, noteclip, fft, frequencies, windowSize, sr, orderLimit):
+    def computeInnerIterPartials(self, noteclip, fft, frequencies, windowSize, sr, orderLimit, beta):
             for order in range(2, orderLimit):
-                yield self.computePartial(self, noteclip, order, fft, frequencies, windowSize, sr)
+                yield self.computePartial(noteclip, order, fft, frequencies, windowSize, sr, beta)
     
+    @staticmethod
     def computeInharmonicity(noteclip, diffs, maxOrder):
         
         def compute_least(u,y):
@@ -126,15 +126,29 @@ class PartialComputer():
             res = least_squares(fun, x0, jac=jac,bounds=(0,np.inf), args=(u, y),loss = 'soft_l1', verbose=0)
             return res.x
 
-        u = np.arange(maxOrder) + 2
+        u = np.arange(len(diffs)) + 2
         [a,b,_] =compute_least(u,diffs)
         beta = 2*a/(noteclip.fundamental+b)
         return beta
 
 
-    def computeOuterIterPartials(self, noteclip, fft, frequencies, windowSize, sr, orderLimit):
-        for orderLimit in range(self.fristEval, self.lastEval, self.step):
-            computeInnerIterGen = self.computeInnerIterPartials(noteclip, fft, frequencies, windowSize, sr, orderLimit)
+    def computeOuterIterPartials(self, noteclip, fft, frequencies, windowSize, sr):
+        beta = 0
+        for orderLimit in range(self.firstEval, self.lastEval, self.step):
+            computeInnerIterGen = self.computeInnerIterPartials(noteclip, fft, frequencies, windowSize, sr, orderLimit, beta)
             diffs = self.computeDiffs(computeInnerIterGen, self.computeTFreqs(noteclip.fundamental, orderLimit))
             beta = self.computeInharmonicity(noteclip, diffs, orderLimit)
+            print(beta)
         return beta
+
+    def __init__(self, step, firstEval, lastEval):
+        self.__step = step
+        self.__firstEval = firstEval
+        self.__lastEval = lastEval
+
+    
+if __name__ == "__main__":
+    x = NoteClip(179, "175hz.wav")
+    y = PartialComputer(2, 6, 50)
+    fft, frequencies = x.computeDFT(x.audio, x.audio.size, x.sr)
+    print(y.computeOuterIterPartials(x, fft, frequencies, 80, x.sr))
