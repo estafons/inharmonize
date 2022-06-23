@@ -3,16 +3,18 @@ import numpy as np
 import scipy
 from scipy.optimize import least_squares
 import cProfile
+import time
 from numba import jit
 
-@jit(nopython=True)
+
 def model(x, u):
     return x[0] * u**3 + x[1]*u + x[2]
 
 def fun(x, u, y):
     temp = model(x,u)
     return temp-y
-@jit(nopython=True)
+
+
 def jac(x, u, y):
     J = np.empty((u.size, x.size))
     J[:, 0] = u**3
@@ -143,7 +145,6 @@ class PartialComputer():
             computeInnerIterGen = self.computeInnerIterPartials(noteclip, fft, frequencies, windowSize, sr, orderLimit, beta)
             diffs = self.computeDiffs(computeInnerIterGen, self.computeTFreqs(noteclip.fundamental, orderLimit))
             beta = computeInharmonicity(noteclip.fundamental, diffs, orderLimit)
-            print(beta)
         return beta
 
     def __init__(self, step, firstEval, lastEval):
@@ -156,4 +157,8 @@ if __name__ == "__main__":
     x = NoteClip(179, "175hz.wav")
     y = PartialComputer(2, 6, 50)
     fft, frequencies = x.computeDFT(x.audio, x.audio.size, x.sr)
-    print(y.computeOuterIterPartials(x, fft, frequencies, 80, x.sr))
+    start_time = time.time()
+    for i in range(1, 500):
+        y.computeOuterIterPartials(x, fft, frequencies, 80, x.sr)
+
+    print("--- %s seconds ---" % (time.time() - start_time))
