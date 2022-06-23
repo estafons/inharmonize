@@ -1,3 +1,4 @@
+import itertools
 import numpy as np
 import time
 import librosa
@@ -5,7 +6,8 @@ import numpy as np
 import scipy
 from scipy.optimize import least_squares
 import cProfile
-from numba import jit
+from numba import jit, vectorize, float64
+from multiprocessing import Pool
 
 @jit(nopython=True)
 def model(x, u):
@@ -14,7 +16,7 @@ def model(x, u):
 def fun(x, u, y):
     temp = model(x,u)
     return temp-y
-    
+
 @jit(nopython=True)
 def jac(x, u, y):
     J = np.empty((u.size, x.size))
@@ -25,7 +27,7 @@ def jac(x, u, y):
 
 def compute_least(u,y):
     x0=[0.00001,0.00001,0.000001]
-    res = least_squares(fun, x0, jac=jac,bounds=(0,np.inf), args=(u, y),loss = 'soft_l1', verbose=0)
+    res = least_squares(fun, x0, jac=jac,bounds=(0,np.inf), args=(u, y),loss = 'soft_l1', verbose=0) 
     return res.x
 
 
@@ -104,29 +106,44 @@ def computePartial(fundamental, order, fft, frequencies, windowSize, sr, beta):
 def computeDiffs(mPartials, tPartials):
     return np.subtract(mPartials, tPartials)
 
+# @vectorize([float64(float64, float64)])
+# def computeDiffs(x, y):
+#     return x - y
+
 
 def computeInnerIterPartials(fundamental, fft, frequencies, windowSize, sr, orderLimit, beta):
     x = np.empty(orderLimit-2)
     for order in range(2, orderLimit):
          x[order-2] = computePartial(fundamental, order, fft, frequencies, windowSize, sr, beta)
     return x
-    
+
 def computeOuterIterPartials(fundamental, firstEval, lastEval, step, fft, frequencies, windowSize, sr):
     beta = 0
     for orderLimit in range(firstEval, lastEval, step):
         computeInnerIterGen = computeInnerIterPartials(fundamental, fft, frequencies, windowSize, sr, orderLimit, beta)
         diffs = computeDiffs(computeInnerIterGen, computeTFreqs(fundamental, orderLimit))
         beta = computeInharmonicity(fundamental, diffs, orderLimit)
+    # print(beta)
     return beta
 
 
+def func(fundamental, fft, frequencies, sr):
+    # print("itsfunc")
+    computeOuterIterPartials(fundamental,6, 50, 2, fft, frequencies, 80, sr)
+    
 
 if __name__ == "__main__":
     x = NoteClip(179, "175hz.wav")
     # y = PartialComputer(2, 6, 50)
     fft, frequencies = x.computeDFT(x.audio, x.audio.size, x.sr)
     start_time = time.time()
-    for i in range(1, 500):
-        computeOuterIterPartials(x.fundamental,6, 50, 2, fft, frequencies, 80, x.sr)
+
+    testObj = type('testType', (object,), 
+                 {'fundamental' : 179, 'fft' : fft, 'frequencies' : frequencies, 'sr' : x.sr})()
     
+    itero = itertools.repeat((x.fundamental, fft, frequencies, x.sr), 500)
+    # print(list(map(func, itertools.repeat((x.fundamental, fft, frequencies, x.sr), 50))))
+    with Pool(5) as p:
+        p.starmap(func, itero)
+    # func(x.fundamental, fft, frequencies, x.sr)
     print("--- %s seconds ---" % (time.time() - start_time))
