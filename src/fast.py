@@ -123,27 +123,27 @@ def computeOuterIterPartials(fundamental, firstEval, lastEval, step, fft, freque
         computeInnerIterGen = computeInnerIterPartials(fundamental, fft, frequencies, windowSize, sr, orderLimit, beta)
         diffs = computeDiffs(computeInnerIterGen, computeTFreqs(fundamental, orderLimit))
         beta = computeInharmonicity(fundamental, diffs, orderLimit)
-    # print(beta)
+        print(beta)
     return beta
 
 
 def func(fundamental, fft, frequencies, sr):
     # print("itsfunc")
-    computeOuterIterPartials(fundamental,6, 50, 2, fft, frequencies, 80, sr)
-    
+    computeOuterIterPartials(fundamental,6, 30, 2, fft, frequencies, 80, sr)
+
 
 if __name__ == "__main__":
-    x = NoteClip(179, "175hz.wav")
+    x = NoteClip(123, "/home/estfa/Projects/inharmonize/data/train/firebrand1/string2/2.wav")
     # y = PartialComputer(2, 6, 50)
     fft, frequencies = x.computeDFT(x.audio, x.audio.size, x.sr)
     start_time = time.time()
 
     testObj = type('testType', (object,), 
-                 {'fundamental' : 179, 'fft' : fft, 'frequencies' : frequencies, 'sr' : x.sr})()
-    
-    itero = itertools.repeat((x.fundamental, fft, frequencies, x.sr), 500)
+                 {'fundamental' : 123, 'fft' : fft, 'frequencies' : frequencies, 'sr' : x.sr})()
+
+    itero = itertools.repeat((x.fundamental, fft, frequencies, x.sr), 1)
     # print(list(map(func, itertools.repeat((x.fundamental, fft, frequencies, x.sr), 50))))
     with Pool(5) as p:
-        p.starmap(func, itero)
+        p.starmap(func, itero, chunksize=10)
     # func(x.fundamental, fft, frequencies, x.sr)
     print("--- %s seconds ---" % (time.time() - start_time))
