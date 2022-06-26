@@ -9,10 +9,17 @@ def getDiff(val1 :float, val2 : float):
     return abs(val1 - val2)/val1
 
 def checkConvergence(values : List):
+    cnt = 0
     for x, y in chunchIt(values, 2):
-        if getDiff(x,y) < 0.01:
-            print(x, y)
-            print(getDiff(x,y))
+        if getDiff(x,y) < 0.05:
+        # print(x, y)
+        # print(getDiff(x,y))
+            cnt += 1
+        
+    if cnt > 5:
+        return True
+    else:
+        return False
 
 lst =[
 1.643839453242095,

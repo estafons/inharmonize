@@ -3,11 +3,18 @@ import numpy as np
 import time
 import librosa
 import numpy as np
+from pip import main
 import scipy
 from scipy.optimize import least_squares
 import cProfile
 from numba import jit, vectorize, float64
 from multiprocessing import Pool
+
+
+def computeDFT(audio, size_of_fft : int, sr : int):
+        fft = np.fft.fft(audio,n = size_of_fft)
+        frequencies = np.fft.fftfreq(size_of_fft,1/sr)
+        return fft, frequencies
 
 @jit(nopython=True)
 def model(x, u):
@@ -294,6 +301,14 @@ def computeOuterIterPartials(fundamental, firstEval, lastEval, step, fft, freque
         computeInnerIterGen = computeInnerIterPartials(fundamental, fft, frequencies, windowSize, sr, orderLimit, beta)
         diffs = computeDiffs(computeInnerIterGen, computeTFreqs(fundamental, orderLimit))
         beta = computeInharmonicity(fundamental, diffs, orderLimit)
-        #print(beta)
-    return beta
+        yield beta
 
+
+def computePartialsGenerator(fundamental, firstEval, lastEval, step, fft, frequencies, windowSize, sr, betasNo):
+    t = itertools.islice(computeOuterIterPartials(fundamental, firstEval, lastEval, step, fft, frequencies, windowSize, sr), betasNo)
+    return t
+
+
+
+if __name__ == "__main__":
+    pass
