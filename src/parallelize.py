@@ -36,8 +36,14 @@ def wrapp():
     times = []
     filename = "/home/estfa/Projects/inharmonize/data/train/firebrand1/string2/2.wav"
     audio, sr = librosa.load(filename, sr = 44100)
+    times.extend(itertools.repeat({"start": 0, "end" : 1}, 1000))
     times.append({"start": 0, "end" : 1})
-    computeInhs(createIter([123], 6, 30, 2, audio, times, 60, sr))
+    computeInhs(createIter([123 for x in range(1000)], 6, 50, 2, audio, times, 60, sr))
 
+
+start_time = time.time()
+
+    
 # y = PartialComputer(2, 6, 50)
 wrapp()
+print("--- %s seconds ---" % (time.time() - start_time))

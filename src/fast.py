@@ -26,50 +26,76 @@ def jac(x, u, y):
     return J
 
 def compute_least(u,y):
+    """ 
+    
+    Function that computes non linear least squares.
+
+    Parameters
+    ------------
+    u : 1-dimension array
+      Orders of partials.
+    y : 1-dimension array
+      differences measured.
+
+    Returns
+    -----------
+    tuple of 3 float. Then used to compute beta coefficient.
+
+
+    """
     x0=[0.00001,0.00001,0.000001]
     res = least_squares(fun, x0, jac=jac,bounds=(0,np.inf), args=(u, y),loss = 'soft_l1', verbose=0) 
     return res.x
 
 
 def computeInharmonicity(fundamental, diffs, maxOrder):
+    """
+    
+    Function that computes inharmonicity coefficient.
+    
+    Parameters
+    -----------
+    fundamental : float
+                fundamental frequency of note.
+    diffs : 1-dimension array
+
+    Returns
+    ----------
+    beta : float
+    beta coefficient computed
+
+    """
     u = np.arange(len(diffs)) + 2
     [a,b,_] =compute_least(u,diffs)
     beta = 2*a/(fundamental+b)
     return beta
 
-class NoteClip():
-
-    @property
-    def fundamental(self):
-        return self.__fundamental
-    
-    @fundamental.setter
-    def fundamental(self, fundamental : float):
-        self.fundamental = fundamental
-
-    @staticmethod
-    def loadAudio(filename : str):
-        audio, sr = librosa.load(filename, sr = 44100)
-        return audio, sr
-
-    @staticmethod
-    def computeDFT(audio, size_of_fft : int, sr : int):
-        fft = np.fft.fft(audio,n = size_of_fft)
-        frequencies = np.fft.fftfreq(size_of_fft,1/sr)
-        return fft, frequencies
-
-    
-
-
-    def __init__(self, fundamental, filename):
-        self.__fundamental = fundamental
-        self.audio, self.sr = self.loadAudio(filename)
-
-
 
 @jit(nopython=True)
 def filterAudio(fft, frequencies, centrerFreq, windowSize, sr):
-    """Method that does zone filtering arround centerFreq with WindowSize"""
+    """Method that does zone filtering arround centerFreq with WindowSize
+    
+    Parameters
+    ------------
+    fft : 1-dimension array
+        fft of input signal
+    frequencies : 1-dimension array
+                frequencies of fft
+    centerFreq : float
+               frequency arround which zone filtering is performed.
+    windowSize : float
+               Size of zone filter
+    sr : int
+        fft sampling rate
+    
+    Returns
+    -----------
+    filtered : 1-dimension array
+             part of the fft arround centerFreq
+    fil_freqs : 1-dimension array
+              corresponding frequencies to filtered fft
+
+    """
     sz = fft.size
     centerFreqY = int(round(centrerFreq*sz/sr))
     filtered = fft[centerFreqY - windowSize//2:centerFreqY + windowSize//2].copy()
@@ -78,72 +104,196 @@ def filterAudio(fft, frequencies, centrerFreq, windowSize, sr):
 
 @jit(nopython=True)
 def computePeak(fft, frequencies):
-        """Method that computes max peak on given FFT. Will be used to
-        detect a partial."""
-        mY = np.abs(fft) # Find magnitude
-        locY = np.argmax(mY) # Find maxpeak location
-        return frequencies[locY] # Get the actual frequency value
+    """Method that computes max peak on given FFT. Will be used to
+    detect a partial.
+    
+    Parameters
+    -----------
+
+    fft : 1-dimension array
+    frequencies : 1-dimension array
+
+    Returns
+    -----------
+    peak : float
+            max peak of fft in Hz
+
+    """
+    mY = np.abs(fft) # Find magnitude
+    locY = np.argmax(mY) # Find maxpeak location
+    return frequencies[locY] # Get the actual frequency value
 
 @jit(nopython=True)
-def computeCenterfreq(fundamental : float, partialOrder : float, beta : float):
+def computeCenterfreq(fundamental : float, partialOrder : int, beta : float):
+    """
+    Centering func for filtering fft based on beta computed so far.
+
+    Parameters
+    ----------
+    fundamental : float
+    partialOrder : int
+                 order of partial searching
+    beta : float
+          beta coefficient computed so far.
+    
+    Returns
+    ---------
+    centerFreq : float
+               frequency center to search for partial based on beta.
+                  
+    """
     return partialOrder*fundamental * np.sqrt(1 + beta*partialOrder**2)
 
 @jit(nopython=True)
 def computeTFreqs(fundamental, maxOrder):
+    """
+    Computing theoretical partials (k*f_0)
+
+    Parameters
+    ----------
+    fundamental : float
+    maxOrder : int
+                 max order of partial to compute
+    
+    Returns
+    ---------
+    tPartials : 1-dimension array
+               theoretical partials expected based on fundamental
+                  
+    """
     return np.arange(2*fundamental, (maxOrder)*fundamental, fundamental)
 
 
 def computePartialPeak(fft, frequencies, centrerFreq, windowSize, sr):
-        return computePeak(*filterAudio(fft, frequencies,
+    """
+    Compute peak of given partial.
+
+    fft : 1-dimension array
+        fft of input signal
+    frequencies : 1-dimension array
+                frequencies of fft
+    centerFreq : float
+               frequency arround which zone filtering is performed.
+    windowSize : float
+                Size of zone filter
+    sr : int
+       fft sampling rate
+    
+    Returns
+    ---------
+    peak : float
+            max peak of fft/partial in Hz
+                    
+    """
+    return computePeak(*filterAudio(fft, frequencies,
                                         centrerFreq, windowSize, sr))
 
 
 def computePartial(fundamental, order, fft, frequencies, windowSize, sr, beta):
+    """
+    Find partial with order.
+
+    fundamental : float
+    order : int
+           order of partial
+    fft : 1-dimension array
+        fft of input signal
+    frequencies : 1-dimension array
+                frequencies of fft
+    centerFreq : float
+               frequency arround which zone filtering is performed.
+    windowSize : float
+                Size of zone filter
+    sr : int
+       fft sampling rate
+    beta : float
+         beta coefficient computed so far.
+    
+    Returns
+    ---------
+    peak : float
+            max peak of fft/partial in Hz
+                    
+    """
     centerFreq = computeCenterfreq(fundamental, order, beta)
     return computePartialPeak(fft, frequencies, centerFreq, windowSize, sr)
 
 @jit(nopython=True)
 def computeDiffs(mPartials, tPartials):
+    """
+    Compute peak of given partial.
+
+    mPartials : 1-dimension array
+        measured partials.
+    tPartials : 1-dimension array
+              ideal/theoretical partials' frequencies
+    
+    Returns
+    ---------
+    diffs : 1-dimension array
+          differences between beasured and ideal partials.
+                    
+    """
     return np.subtract(mPartials, tPartials)
 
-# @vectorize([float64(float64, float64)])
-# def computeDiffs(x, y):
-#     return x - y
-
-
 def computeInnerIterPartials(fundamental, fft, frequencies, windowSize, sr, orderLimit, beta):
+    """
+    Compute partials up to a limit orderLimit with a given beta.
+
+    fundamental : float
+    fft : 1-dimension array
+    frequencies : 1-dimension array
+                 frequencies associated to fft
+    windowSize : float
+               window size selected to filter arround each partial search window.
+    sr : int
+        sampling rate
+    orderLimit : int
+                up to number of partials to compute
+    beta : float
+         beta computed so far
+    
+    Returns
+    ---------
+    mPartials : 1-dimension array
+               partials computed so far
+                    
+    """
     x = np.empty(orderLimit-2)
     for order in range(2, orderLimit):
          x[order-2] = computePartial(fundamental, order, fft, frequencies, windowSize, sr, beta)
     return x
 
 def computeOuterIterPartials(fundamental, firstEval, lastEval, step, fft, frequencies, windowSize, sr):
+    """
+    Compute partials and beta coefficient.
+
+    fundamental : float
+    firstEval : int
+              first order of partial that beta will be evaluated for the first time.
+    lastEval : int
+             number of partials to use for beta computation.
+    step : int
+         step of order of partials to compute beta.
+    fft : 1-dimension array
+    frequencies : 1-dimension array
+                 frequencies associated to fft
+    windowSize : float
+               window size selected to filter arround each partial search window.
+    sr : int
+        sampling rate
+    
+    Returns
+    ---------
+    beta : float
+          beta computed for this note instance
+                    
+    """
     beta = 0
     for orderLimit in range(firstEval, lastEval, step):
         computeInnerIterGen = computeInnerIterPartials(fundamental, fft, frequencies, windowSize, sr, orderLimit, beta)
         diffs = computeDiffs(computeInnerIterGen, computeTFreqs(fundamental, orderLimit))
         beta = computeInharmonicity(fundamental, diffs, orderLimit)
-        print(beta)
+        #print(beta)
     return beta
 
-
-def func(fundamental, fft, frequencies, sr):
-    # print("itsfunc")
-    computeOuterIterPartials(fundamental,6, 30, 2, fft, frequencies, 80, sr)
-
-
-if __name__ == "__main__":
-    x = NoteClip(123, "/home/estfa/Projects/inharmonize/data/train/firebrand1/string2/2.wav")
-    # y = PartialComputer(2, 6, 50)
-    fft, frequencies = x.computeDFT(x.audio, x.audio.size, x.sr)
-    start_time = time.time()
-
-    testObj = type('testType', (object,), 
-                 {'fundamental' : 123, 'fft' : fft, 'frequencies' : frequencies, 'sr' : x.sr})()
-
-    itero = itertools.repeat((x.fundamental, fft, frequencies, x.sr), 1)
-    # print(list(map(func, itertools.repeat((x.fundamental, fft, frequencies, x.sr), 50))))
-    with Pool(5) as p:
-        p.starmap(func, itero, chunksize=10)
-    # func(x.fundamental, fft, frequencies, x.sr)
-    print("--- %s seconds ---" % (time.time() - start_time))
