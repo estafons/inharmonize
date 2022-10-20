@@ -29,3 +29,4 @@ SoundFile==0.10.3.post1
 threadpoolctl==3.1.0
 tomli==2.0.1
 urllib3==1.26.9
+SoundFile==0.11.0
